@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/edge/utils/pkg/atomiccounter"
+	"github.com/edge/atomiccounter"
 )
 
 // Store stores mapped data.
