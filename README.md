@@ -1,6 +1,6 @@
 # Edge Atomic Store
 
-This lightweight logging library is used throughout the Edge suite to standardise reporting.
+A generic object store for highly concurrent applications.
 
 Example of basic usage:
 
