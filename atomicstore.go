@@ -153,7 +153,3 @@ func New(lockable bool) *Store {
 
 	return s
 }
-
-// When a context is closed we broadcast
-// When a host disconnects, the context is closed
-// The closed context is triggering all other waits.
