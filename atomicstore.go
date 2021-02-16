@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/edge/utils/pkg/atomiccounter"
+	"github.com/edge/atomiccounter"
 )
 
 // Store stores mapped data.
@@ -78,13 +78,6 @@ func (s *Store) Remove(key string) {
 // Get gets the value of a mapped key.
 func (s *Store) Get(key string) (value interface{}, ok bool) {
 	return s.Load(key)
-}
-
-// RangeAll calls an input method for each entry.
-func (s *Store) RangeAll(r func(k, v interface{}) bool) {
-	s.Range(func(k, v interface{}) bool {
-		return r(k, v)
-	})
 }
 
 // GetKeyMap returns a map of all keys.
