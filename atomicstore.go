@@ -11,8 +11,11 @@ import (
 
 // Store stores mapped data.
 type Store struct {
-	cond  *sync.Cond
-	count *atomiccounter.Counter
+	cond     *sync.Cond
+	count    *atomiccounter.Counter
+	onInsert func(string, interface{})
+	onUpdate func(string, interface{})
+	onRemove func(string, interface{})
 	sync.Map
 }
 
@@ -26,53 +29,65 @@ func (s *Store) Len() uint64 {
 	return s.count.Get()
 }
 
-// Insert creates a new entry of overwrites the existing.
-func (s *Store) Insert(key string, val interface{}) (interface{}, bool) {
-	if s.lockable() {
-		s.cond.L.Lock()
-		defer s.cond.L.Unlock()
-	}
-
-	// If the document didn't already exist, store it,
-	// increment counter and return the stored item.
-	if resp, loaded := s.LoadOrStore(key, val); !loaded {
-		s.count.Inc()
-		return resp, loaded
-	}
-
-	// This entry already exists. Overwrite it.
-	s.Store(key, val)
-	return val, true
-}
-
-// Upsert creates a new entry if the key doesn't exist.
-func (s *Store) Upsert(key string, val interface{}) (interface{}, bool) {
+func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, bool) {
 	if s.lockable() {
 		s.cond.L.Lock()
 		defer s.cond.L.Unlock()
 	}
 
 	resp, loaded := s.LoadOrStore(key, val)
-	// Increment the global counter if the value was not loaded.
-	if !loaded {
-		s.count.Inc()
+
+	// If the item was loaded and the request
+	// specified unique key, return existing.
+	if loaded && unique {
+		return resp, loaded
 	}
 
-	return resp, loaded
+	// LoadOrStore has already saved a new entry.
+	if !loaded {
+		s.count.Inc()
+		if s.onInsert != nil {
+			s.onInsert(key, resp)
+		}
+		return resp, loaded
+	}
+
+	// This entry already exists. Overwrite it.
+	if s.onUpdate != nil {
+		s.onUpdate(key, resp)
+	}
+	s.Store(key, val)
+	return val, true
+}
+
+// Insert creates a new entry or overwrites the existing.
+func (s *Store) Insert(key string, val interface{}) (interface{}, bool) {
+	return s.insert(key, val, false)
+}
+
+// InsertUnique creates a new entry if the key doesn't exist.
+func (s *Store) InsertUnique(key string, val interface{}) (interface{}, bool) {
+	return s.insert(key, val, true)
 }
 
 // Remove deletes a key from the store.
-func (s *Store) Remove(key string) {
+func (s *Store) Remove(key string) bool {
 	if s.lockable() {
 		s.cond.L.Lock()
 		defer s.cond.L.Unlock()
 	}
 
 	// Only reduce coounter and attempt delete if the entry exists.
-	if _, ok := s.Get(key); ok {
+	if resp, ok := s.Get(key); ok {
+		// This entry already exists. Overwrite it.
+		if s.onRemove != nil {
+			s.onRemove(key, resp)
+		}
 		s.count.Dec()
 		s.Delete(key)
+		return true
 	}
+	return false
 }
 
 // Get gets the value of a mapped key.
@@ -126,13 +141,27 @@ func (s *Store) WaitForDataChange(ctx context.Context) {
 // Flush clears the store.
 func (s *Store) Flush() {
 	s.Range(func(k, v interface{}) bool {
-		s.count.Dec()
-		s.Delete(k)
+		s.Remove(k)
 		return true
 	})
 	if s.lockable() {
 		s.cond.Broadcast()
 	}
+}
+
+// OnInsertHandler adds a callback handler for inserts.
+func (s *Store) OnInsertHandler(f func(string, interface)) {
+	s.onInsert = f
+}
+
+// OnInsertHandler adds a callback handler for updates.
+func (s *Store) OnUpdateHandler(f func(string, interface)) {
+	s.onUpdate = f
+}
+
+// OnInsertHandler adds a callback handler for removals.
+func (s *Store) OnRemoveHandler(f func(string, interface)) {
+	s.onRemove = f
 }
 
 // New returns a new store.
