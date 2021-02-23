@@ -141,7 +141,7 @@ func (s *Store) WaitForDataChange(ctx context.Context) {
 // Flush clears the store.
 func (s *Store) Flush() {
 	s.Range(func(k, v interface{}) bool {
-		s.Remove(k)
+		s.Remove(k.(string))
 		return true
 	})
 	if s.lockable() {
@@ -150,17 +150,17 @@ func (s *Store) Flush() {
 }
 
 // OnInsertHandler adds a callback handler for inserts.
-func (s *Store) OnInsertHandler(f func(string, interface)) {
+func (s *Store) OnInsertHandler(f func(string, interface{})) {
 	s.onInsert = f
 }
 
 // OnInsertHandler adds a callback handler for updates.
-func (s *Store) OnUpdateHandler(f func(string, interface)) {
+func (s *Store) OnUpdateHandler(f func(string, interface{})) {
 	s.onUpdate = f
 }
 
 // OnInsertHandler adds a callback handler for removals.
-func (s *Store) OnRemoveHandler(f func(string, interface)) {
+func (s *Store) OnRemoveHandler(f func(string, interface{})) {
 	s.onRemove = f
 }
 
