@@ -57,7 +57,9 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 		}
 	} else {
 		s.count.Inc()
-		s.onInsert(key, val)
+		if s.onInsert != nil {
+			s.onInsert(key, val)
+		}
 	}
 	return val, true
 }
