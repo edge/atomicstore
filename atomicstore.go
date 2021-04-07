@@ -35,28 +35,30 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 		defer s.cond.L.Unlock()
 	}
 
-	resp, loaded := s.LoadOrStore(key, val)
-
-	// If the item was loaded and the request
-	// specified unique key, return existing.
-	if loaded && unique {
-		return resp, loaded
-	}
-
-	// LoadOrStore has already saved a new entry.
-	if !loaded {
-		s.count.Inc()
-		if s.onInsert != nil {
-			s.onInsert(key, resp)
+	// Unique values only get inserted if they don't already exist.
+	if unique {
+		resp, loaded := s.LoadOrStore(key, val)
+		if !loaded {
+			s.count.Inc()
+			if s.onInsert != nil {
+				s.onInsert(key, resp)
+			}
 		}
 		return resp, loaded
 	}
 
-	// This entry already exists. Overwrite it.
-	if s.onUpdate != nil {
-		s.onUpdate(key, resp)
-	}
+	// Check for value
+	_, exists := s.Get(key)
 	s.Store(key, val)
+
+	if exists {
+		if s.onUpdate != nil {
+			s.onUpdate(key, val)
+		}
+	} else {
+		s.count.Inc()
+		s.onInsert(key, val)
+	}
 	return val, true
 }
 
