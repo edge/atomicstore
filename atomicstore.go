@@ -83,12 +83,12 @@ func (s *Store) Remove(key string) bool {
 
 	// Only reduce coounter and attempt delete if the entry exists.
 	if resp, ok := s.Get(key); ok {
+		s.count.Dec()
+		s.Delete(key)
 		// This entry already exists. Overwrite it.
 		if s.onRemove != nil {
 			s.onRemove(key, resp)
 		}
-		s.count.Dec()
-		s.Delete(key)
 		return true
 	}
 	return false
