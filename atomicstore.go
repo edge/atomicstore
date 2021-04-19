@@ -40,9 +40,6 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 		resp, loaded := s.LoadOrStore(key, val)
 		if !loaded {
 			s.count.Inc()
-			if s.onInsert != nil {
-				go s.onInsert(key, resp)
-			}
 		}
 		return resp, loaded
 	}
@@ -52,26 +49,38 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 	s.Store(key, val)
 
 	if exists {
-		if s.onUpdate != nil {
-			go s.onUpdate(key, val)
-		}
-	} else {
-		s.count.Inc()
-		if s.onInsert != nil {
-			go s.onInsert(key, val)
-		}
+		return val, true // Was loaded
 	}
-	return val, true
+
+	s.count.Inc()
+	return val, false // Wasn't loaded
 }
 
 // Insert creates a new entry or overwrites the existing.
 func (s *Store) Insert(key string, val interface{}) (interface{}, bool) {
-	return s.insert(key, val, false)
+	resp, loaded := s.insert(key, val, false)
+
+	// This was an update
+	if loaded && s.onUpdate != nil {
+		s.onUpdate(key, resp)
+		return resp, loaded
+	}
+	// This was new
+	if !loaded && s.onInsert != nil {
+		s.onInsert(key, resp)
+	}
+	return resp, loaded
 }
 
 // InsertUnique creates a new entry if the key doesn't exist.
 func (s *Store) InsertUnique(key string, val interface{}) (interface{}, bool) {
-	return s.insert(key, val, true)
+	resp, loaded := s.insert(key, val, true)
+
+	if !loaded && s.onInsert != nil {
+		s.onInsert(key, resp)
+	}
+
+	return resp, loaded
 }
 
 // Remove deletes a key from the store.
@@ -87,7 +96,7 @@ func (s *Store) Remove(key string) bool {
 		s.Delete(key)
 		// This entry already exists. Overwrite it.
 		if s.onRemove != nil {
-			go s.onRemove(key, resp)
+			s.onRemove(key, resp)
 		}
 		return true
 	}
