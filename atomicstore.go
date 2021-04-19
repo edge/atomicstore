@@ -41,7 +41,7 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 		if !loaded {
 			s.count.Inc()
 			if s.onInsert != nil {
-				s.onInsert(key, resp)
+				go s.onInsert(key, resp)
 			}
 		}
 		return resp, loaded
@@ -53,12 +53,12 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 
 	if exists {
 		if s.onUpdate != nil {
-			s.onUpdate(key, val)
+			go s.onUpdate(key, val)
 		}
 	} else {
 		s.count.Inc()
 		if s.onInsert != nil {
-			s.onInsert(key, val)
+			go s.onInsert(key, val)
 		}
 	}
 	return val, true
@@ -87,7 +87,7 @@ func (s *Store) Remove(key string) bool {
 		s.Delete(key)
 		// This entry already exists. Overwrite it.
 		if s.onRemove != nil {
-			s.onRemove(key, resp)
+			go s.onRemove(key, resp)
 		}
 		return true
 	}
