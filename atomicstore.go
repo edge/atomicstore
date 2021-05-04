@@ -48,12 +48,11 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 	_, exists := s.Get(key)
 	s.Store(key, val)
 
-	if exists {
-		return val, true // Was loaded
+	if !exists {
+		s.count.Inc()
 	}
 
-	s.count.Inc()
-	return val, false // Wasn't loaded
+	return val, exists
 }
 
 // Insert creates a new entry or overwrites the existing.
