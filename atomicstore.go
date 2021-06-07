@@ -9,13 +9,29 @@ import (
 	"github.com/edge/atomiccounter"
 )
 
+type options struct {
+	unique       bool
+	runCallbacks bool
+}
+
+var (
+	defaultCallback      = func(string, interface{}) {}
+	defaultBatchCallback = func(KV) {}
+)
+
+// KV stores a map of keyed entries and is used for batch actions,
+type KV map[interface{}]interface{}
+
 // Store stores mapped data.
 type Store struct {
-	cond     *sync.Cond
-	count    *atomiccounter.Counter
-	onInsert func(string, interface{})
-	onUpdate func(string, interface{})
-	onRemove func(string, interface{})
+	cond          *sync.Cond
+	count         *atomiccounter.Counter
+	onInsert      func(string, interface{})
+	onUpdate      func(string, interface{})
+	onRemove      func(string, interface{})
+	onBatchInsert func(KV)
+	onBatchUpdate func(KV)
+	onBatchRemove func(KV)
 	sync.Map
 }
 
@@ -29,17 +45,20 @@ func (s *Store) Len() uint64 {
 	return s.count.Get()
 }
 
-func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, bool) {
+func (s *Store) insert(key, val interface{}, o options) (interface{}, bool) {
 	if s.lockable() {
 		s.cond.L.Lock()
 		defer s.cond.L.Unlock()
 	}
 
 	// Unique values only get inserted if they don't already exist.
-	if unique {
+	if o.unique {
 		resp, loaded := s.LoadOrStore(key, val)
 		if !loaded {
 			s.count.Inc()
+			if o.runCallbacks && s.onInsert != nil {
+				s.onInsert(key.(string), resp)
+			}
 		}
 		return resp, loaded
 	}
@@ -50,6 +69,11 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 
 	if !exists {
 		s.count.Inc()
+		if o.runCallbacks {
+			s.onInsert(key.(string), val)
+		}
+	} else if o.runCallbacks {
+		s.onUpdate(key.(string), val)
 	}
 
 	return val, exists
@@ -57,33 +81,15 @@ func (s *Store) insert(key string, val interface{}, unique bool) (interface{}, b
 
 // Insert creates a new entry or overwrites the existing.
 func (s *Store) Insert(key string, val interface{}) (interface{}, bool) {
-	resp, loaded := s.insert(key, val, false)
-
-	// This was an update
-	if loaded && s.onUpdate != nil {
-		s.onUpdate(key, resp)
-		return resp, loaded
-	}
-	// This was new
-	if !loaded && s.onInsert != nil {
-		s.onInsert(key, resp)
-	}
-	return resp, loaded
+	return s.insert(key, val, options{unique: false, runCallbacks: true})
 }
 
 // InsertUnique creates a new entry if the key doesn't exist.
 func (s *Store) InsertUnique(key string, val interface{}) (interface{}, bool) {
-	resp, loaded := s.insert(key, val, true)
-
-	if !loaded && s.onInsert != nil {
-		s.onInsert(key, resp)
-	}
-
-	return resp, loaded
+	return s.insert(key, val, options{unique: true, runCallbacks: true})
 }
 
-// Remove deletes a key from the store.
-func (s *Store) Remove(key string) bool {
+func (s *Store) remove(key interface{}, o options) (interface{}, bool) {
 	if s.lockable() {
 		s.cond.L.Lock()
 		defer s.cond.L.Unlock()
@@ -94,16 +100,22 @@ func (s *Store) Remove(key string) bool {
 		s.count.Dec()
 		s.Delete(key)
 		// This entry already exists. Overwrite it.
-		if s.onRemove != nil {
-			s.onRemove(key, resp)
+		if o.runCallbacks {
+			s.onRemove(key.(string), resp)
 		}
-		return true
+		return resp, true
 	}
-	return false
+	return nil, false
+}
+
+// Remove deletes a key from the store.
+func (s *Store) Remove(key interface{}) bool {
+	_, success := s.remove(key, options{runCallbacks: true})
+	return success
 }
 
 // Get gets the value of a mapped key.
-func (s *Store) Get(key string) (value interface{}, ok bool) {
+func (s *Store) Get(key interface{}) (value interface{}, ok bool) {
 	return s.Load(key)
 }
 
@@ -176,10 +188,31 @@ func (s *Store) OnRemoveHandler(f func(string, interface{})) {
 	s.onRemove = f
 }
 
+// OnBatchInsertHandler adds a callback handler for batch inserts.
+func (s *Store) OnBatchInsertHandler(f func(KV)) {
+	s.onBatchInsert = f
+}
+
+// OnBatchInsertHandler adds a callback handler for batch updates.
+func (s *Store) OnBatchUpdateHandler(f func(KV)) {
+	s.onBatchUpdate = f
+}
+
+// OnBatchInsertHandler adds a callback handler for batch removals.
+func (s *Store) OnBatchRemoveHandler(f func(KV)) {
+	s.onBatchRemove = f
+}
+
 // New returns a new store.
 func New(lockable bool) *Store {
 	s := &Store{
-		count: atomiccounter.New(),
+		count:         atomiccounter.New(),
+		onInsert:      defaultCallback,
+		onUpdate:      defaultCallback,
+		onRemove:      defaultCallback,
+		onBatchInsert: defaultBatchCallback,
+		onBatchUpdate: defaultBatchCallback,
+		onBatchRemove: defaultBatchCallback,
 	}
 	if lockable {
 		s.cond = sync.NewCond(new(sync.Mutex))
