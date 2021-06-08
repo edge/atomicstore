@@ -16,11 +16,15 @@ type options struct {
 
 var (
 	defaultCallback      = func(string, interface{}) {}
-	defaultBatchCallback = func(KV) {}
+	defaultBatchCallback = func(*KV) {}
 )
 
 // KV stores a map of keyed entries and is used for batch actions,
 type KV map[interface{}]interface{}
+
+func (k *KV) Len() int {
+	return len(*k)
+}
 
 // Store stores mapped data.
 type Store struct {
@@ -29,9 +33,9 @@ type Store struct {
 	onInsert      func(string, interface{})
 	onUpdate      func(string, interface{})
 	onRemove      func(string, interface{})
-	onBatchInsert func(KV)
-	onBatchUpdate func(KV)
-	onBatchRemove func(KV)
+	onBatchInsert func(*KV)
+	onBatchUpdate func(*KV)
+	onBatchRemove func(*KV)
 	sync.Map
 }
 
@@ -121,7 +125,7 @@ func (s *Store) Get(key interface{}) (value interface{}, ok bool) {
 
 // GetKeyMap returns a map of all keys.
 func (s *Store) GetKeyMap() map[string]bool {
-	keys := make(map[string]bool, 0)
+	keys := make(map[string]bool)
 	s.Range(func(k, v interface{}) bool {
 		keys[k.(string)] = true
 		return true
@@ -189,17 +193,17 @@ func (s *Store) OnRemoveHandler(f func(string, interface{})) {
 }
 
 // OnBatchInsertHandler adds a callback handler for batch inserts.
-func (s *Store) OnBatchInsertHandler(f func(KV)) {
+func (s *Store) OnBatchInsertHandler(f func(*KV)) {
 	s.onBatchInsert = f
 }
 
 // OnBatchInsertHandler adds a callback handler for batch updates.
-func (s *Store) OnBatchUpdateHandler(f func(KV)) {
+func (s *Store) OnBatchUpdateHandler(f func(*KV)) {
 	s.onBatchUpdate = f
 }
 
 // OnBatchInsertHandler adds a callback handler for batch removals.
-func (s *Store) OnBatchRemoveHandler(f func(KV)) {
+func (s *Store) OnBatchRemoveHandler(f func(*KV)) {
 	s.onBatchRemove = f
 }
 
