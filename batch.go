@@ -83,7 +83,11 @@ func (b *batch) Execute() {
 }
 
 func (b *batch) do(j *job, wg *sync.WaitGroup) {
-	defer wg.Done()
+	b.Lock()
+	defer func() {
+		b.Unlock()
+		wg.Done()
+	}()
 	switch j.method {
 	case oppInsert, oppInsertUnique:
 		unique := j.method == oppInsertUnique
